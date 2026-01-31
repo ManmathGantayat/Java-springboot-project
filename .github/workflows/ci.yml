@@ -9,18 +9,24 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        java-version: [21]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ matrix.java-version }}
           cache: maven
 
-      - name: Build backend (skip tests)
+      - name: Build (backend)
         working-directory: backend
-        run: mvn clean package -DskipTests
+        run: mvn -B -DskipTests package
+
+      - name: Run tests (backend)
+        working-directory: backend
+        run: mvn -B test
