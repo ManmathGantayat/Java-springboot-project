@@ -21,12 +21,12 @@ jobs:
         java-version: '17'
         cache: maven
 
-    # 3️⃣ Build Spring Boot JAR (SKIP TESTS)
+    # 3️⃣ Build Spring Boot JAR (skip tests)
     - name: Build Spring Boot JAR
       working-directory: backend
       run: mvn clean package -DskipTests
 
-    # 4️⃣ Prepare EC2 directory (clean)
+    # 4️⃣ Prepare EC2 directory
     - name: Prepare EC2 directory
       uses: appleboy/ssh-action@v1.1.0
       with:
@@ -34,13 +34,11 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_KEY }}
         script: |
-          rm -rf /home/ec2-user/app
           mkdir -p /home/ec2-user/app
-          mkdir -p /var/log/app
-          chmod -R 755 /home/ec2-user/app
-          chmod -R 777 /var/log/app
+          mkdir -p /home/ec2-user/logs
+          rm -f /home/ec2-user/app/datastore-0.0.7.jar
 
-    # 5️⃣ Upload JAR (FORCE FILE, NOT DIRECTORY)
+    # 5️⃣ Upload JAR (CORRECT WAY)
     - name: Upload JAR to EC2
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -49,32 +47,35 @@ jobs:
         key: ${{ secrets.EC2_KEY }}
         source: backend/target/datastore-0.0.7.jar
         target: /home/ec2-user/app/
-        strip_components: 2
+        overwrite: true
 
-    # 6️⃣ Stop old application (NEVER FAIL)
-    - name: Stop Old Application
+    # 6️⃣ Stop old application (SAFE)
+    - name: Stop old application
       uses: appleboy/ssh-action@v1.1.0
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_KEY }}
         script: |
-          pkill -f datastore-0.0.7.jar || true
-          sleep 2
+          PID=$(pgrep -f datastore-0.0.7.jar || true)
+          if [ -n "$PID" ]; then
+            kill $PID
+            sleep 3
+          fi
 
-    # 7️⃣ Start application
-    - name: Start Application
+    # 7️⃣ Start new application
+    - name: Start application
       uses: appleboy/ssh-action@v1.1.0
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_KEY }}
         script: |
-          nohup java -jar /home/ec2-user/app/datastore-0.0.7.jar \
+          nohup java \
+            -jar /home/ec2-user/app/datastore-0.0.7.jar \
             --server.port=8084 \
-            > /var/log/app/datastore.log 2>&1 &
+            > /home/ec2-user/logs/app.log 2>&1 &
 
           sleep 5
           ps -ef | grep datastore || true
           ss -lntp | grep 8084 || true
-          echo "🚀 Application started"
