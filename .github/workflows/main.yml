@@ -35,8 +35,9 @@ jobs:
         script: |
           rm -rf /home/ec2-user/app
           mkdir -p /home/ec2-user/app
+          mkdir -p /var/log
 
-    # 5️⃣ Upload JAR (TO DIRECTORY ONLY)
+    # 5️⃣ Upload JAR (directory only)
     - name: Upload JAR
       uses: appleboy/scp-action@v0.1.7
       with:
@@ -46,7 +47,7 @@ jobs:
         source: backend/target/datastore-0.0.7.jar
         target: /home/ec2-user/app/
 
-    # 6️⃣ Stop old app (never fail)
+    # 6️⃣ Stop old application (NO SIGNALS)
     - name: Stop Old Application
       uses: appleboy/ssh-action@v1.1.0
       with:
@@ -54,10 +55,17 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_KEY }}
         script: |
-          pkill -f datastore-0.0.7.jar || true
+          PID=$(ps -ef | grep datastore-0.0.7.jar | grep -v grep | awk '{print $2}')
+          if [ -n "$PID" ]; then
+            echo "Stopping PID $PID"
+            kill $PID
+            sleep 3
+          else
+            echo "No running application"
+          fi
           exit 0
 
-    # 7️⃣ Start app (MOVE + RUN)
+    # 7️⃣ Start application
     - name: Start Application
       uses: appleboy/ssh-action@v1.1.0
       with:
@@ -66,8 +74,6 @@ jobs:
         key: ${{ secrets.EC2_KEY }}
         script: |
           cd /home/ec2-user/app
-
-          # ensure it's a file
           file datastore-0.0.7.jar
 
           nohup java -jar datastore-0.0.7.jar \
@@ -77,4 +83,4 @@ jobs:
           sleep 5
           ps -ef | grep datastore || true
           ss -lntp | grep 8084 || true
-          echo "🚀 Application started"
+          echo "🚀 Application started successfully"
